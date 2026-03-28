@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>人脸控制摄像机视角（反转）</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0,0,0,0.7);
+            color: #00ff99;
+            font-size: 16px;
+            padding: 10px 15px;
+            border-radius: 8px;
+            backdrop-filter: blur(5px);
+            z-index: 10;
+            pointer-events: none;
+            font-family: monospace;
+            line-height: 1.4;
+        }
+        #coord {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0,0,0,0.7);
+            color: #ffaa44;
+            font-size: 14px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            z-index: 10;
+            pointer-events: none;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">等待人脸数据...</div>
+    <div id="coord">人脸坐标: X: --  Y: --</div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "/static/three.module.min.js"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        console.log('Three.js 加载成功');
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x050b1a);
+        scene.fog = new THREE.FogExp2(0x050b1a, 0.02);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 0, 5);
+        camera.lookAt(0, 0, 0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild(renderer.domElement);
+
+        const gridHelper = new THREE.GridHelper(10, 20, 0x88aaff, 0x335588);
+        gridHelper.position.y = -1.2;
+        scene.add(gridHelper);
+
+        const ambientLight = new THREE.AmbientLight(0x404060);
+        scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+        dirLight.position.set(2, 5, 3);
+        dirLight.castShadow = true;
+        scene.add(dirLight);
+        const backLight = new THREE.PointLight(0xffaa66, 0.4);
+        backLight.position.set(-1, 1, -2);
+        scene.add(backLight);
+
+        const geometry = new THREE.BoxGeometry(1.2, 1.2, 1.2);
+        const materials = [
+            new THREE.MeshStandardMaterial({ color: 0xff3333, roughness: 0.3, metalness: 0.6 }),
+            new THREE.MeshStandardMaterial({ color: 0x33ff33, roughness: 0.3, metalness: 0.6 }),
+            new THREE.MeshStandardMaterial({ color: 0x3333ff, roughness: 0.3, metalness: 0.6 }),
+            new THREE.MeshStandardMaterial({ color: 0xffcc33, roughness: 0.3, metalness: 0.6 }),
+            new THREE.MeshStandardMaterial({ color: 0xff33ff, roughness: 0.3, metalness: 0.6 }),
+            new THREE.MeshStandardMaterial({ color: 0x33ffff, roughness: 0.3, metalness: 0.6 })
+        ];
+        const cube = new THREE.Mesh(geometry, materials);
+        cube.castShadow = true;
+        cube.receiveShadow = true;
+        scene.add(cube);
+
+        const ringGeo = new THREE.TorusGeometry(0.85, 0.05, 32, 100);
+        const ringMat = new THREE.MeshStandardMaterial({ color: 0xffaa88, emissive: 0x442200 });
+        const ring = new THREE.Mesh(ringGeo, ringMat);
+        cube.add(ring);
+
+        const particleCount = 600;
+        const particlesGeo = new THREE.BufferGeometry();
+        const positions = new Float32Array(particleCount * 3);
+        for (let i = 0; i < particleCount; i++) {
+            positions[i*3] = (Math.random() - 0.5) * 30;
+            positions[i*3+1] = (Math.random() - 0.5) * 15;
+            positions[i*3+2] = (Math.random() - 0.5) * 20 - 10;
+        }
+        particlesGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        const particleMat = new THREE.PointsMaterial({ color: 0x88aaff, size: 0.06, transparent: true, opacity: 0.5 });
+        const particles = new THREE.Points(particlesGeo, particleMat);
+        scene.add(particles);
+
+        const cameraRadius = 5;
+        const maxYaw = Math.PI / 3;
+        const maxPitch = Math.PI / 6;
+
+        let targetYaw = 0;
+        let targetPitch = 0;
+        let currentYaw = 0;
+        let currentPitch = 0;
+        const lerpSpeed = 0.12;
+
+        async function fetchFaceData() {
+            try {
+                const res = await fetch('/face-data', {
+                    cache: 'no-store',
+                    headers: { 'Cache-Control': 'no-cache' }
+                });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                // 反转控制：加负号
+                targetYaw = -(data.x - 0.5) * 2 * maxYaw;
+                targetPitch = -(data.y - 0.5) * 2 * maxPitch;
+
+                document.getElementById('info').innerHTML = `✅ 人脸追踪中（反转）<br>水平角: ${(targetYaw * 180 / Math.PI).toFixed(1)}°<br>俯仰角: ${(targetPitch * 180 / Math.PI).toFixed(1)}°`;
+                document.getElementById('coord').innerHTML = `人脸坐标: X: ${data.x.toFixed(3)} &nbsp; Y: ${data.y.toFixed(3)}`;
+            } catch (err) {
+                console.warn('获取人脸数据失败:', err);
+                document.getElementById('info').innerHTML = '⚠️ 等待人脸数据...<br>请确保后端服务已启动并检测到人脸';
+                document.getElementById('coord').innerHTML = '人脸坐标: 未获取';
+            }
+        }
+
+        function updateCamera() {
+            const x = cameraRadius * Math.cos(currentPitch) * Math.sin(currentYaw);
+            const y = cameraRadius * Math.sin(currentPitch);
+            const z = cameraRadius * Math.cos(currentPitch) * Math.cos(currentYaw);
+            camera.position.set(x, y, z);
+            camera.lookAt(0, 0, 0);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            currentYaw += (targetYaw - currentYaw) * lerpSpeed;
+            currentPitch += (targetPitch - currentPitch) * lerpSpeed;
+            updateCamera();
+
+            particles.rotation.y += 0.002;
+            particles.rotation.x += 0.001;
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+        setInterval(fetchFaceData, 40);
+        fetchFaceData();
+
+        window.addEventListener('resize', onWindowResize);
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        console.log('3D场景已启动，相机控制方向已反转');
+    </script>
+</body>
+</html>

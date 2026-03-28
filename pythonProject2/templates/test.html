@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>人脸坐标测试</title>
+    <style>
+        body { background: black; color: lime; font-family: monospace; font-size: 24px; padding: 20px; }
+    </style>
+</head>
+<body>
+    <div id="status">等待数据...</div>
+    <script>
+        async function update() {
+            try {
+                const res = await fetch('/face-data', { cache: 'no-store' });
+                const data = await res.json();
+                document.getElementById('status').innerHTML = `X: ${data.x.toFixed(4)}<br>Y: ${data.y.toFixed(4)}`;
+            } catch (err) {
+                document.getElementById('status').innerHTML = '连接失败: ' + err.message;
+            }
+        }
+        setInterval(update, 100);
+        update();
+    </script>
+</body>
+</html>
